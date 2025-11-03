@@ -1,0 +1,47 @@
+# Render.com deployment configuration
+
+# Backend Service Configuration
+services:
+  - type: web
+    name: wastewise-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: MONGODB_URL
+        value: "mongodb+srv://wastewise_user:wastewise_user123@cluster0.wcjs6gg.mongodb.net/wastewise_db?retryWrites=true&w=majority&appName=Cluster0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_NAME
+        value: "wastewise_db"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: ALLOWED_ORIGINS
+        value: "https://wastewise.onrender.com"
+      - key: ENVIRONMENT
+        value: "production"
+      - key: DEBUG
+        value: "False"
+      - key: LOG_LEVEL
+        value: "INFO"
+
+  # Next.js Frontend (Root Directory)
+  - type: web
+    name: wastewise
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: "https://wastewise-backend.onrender.com"
+      - key: NODE_ENV
+        value: "production"
+      - key: NEXTAUTH_URL
+        value: "https://wastewise.onrender.com"
+      - key: NEXTAUTH_SECRET
+        generateValue: true

@@ -22,12 +22,23 @@ from pathlib import Path
 # Load environment variables from .env file
 load_dotenv()
 
+# Environment configuration
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
 # Configure logging
+log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Log environment info
+logger.info(f"Starting WasteWise API in {ENVIRONMENT} mode")
+logger.info(f"Debug mode: {DEBUG}")
+logger.info(f"Log level: {LOG_LEVEL}")
 
 # Rate limiting
 limiter = Limiter(key_func=get_remote_address)
@@ -35,7 +46,10 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="WasteWise API",
     description="Waste management and issue reporting platform",
-    version="1.0.0"
+    version="1.0.0",
+    debug=DEBUG,
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None
 )
 
 # Add rate limiting middleware
@@ -676,11 +690,58 @@ async def get_report_stats(current_user: dict = Depends(get_current_user)):
             detail="Failed to fetch statistics"
         )
 
+# Health Check Endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for deployment monitoring"""
+    try:
+        # Test database connection
+        await db.list_collection_names()
+        return {
+            "status": "healthy",
+            "environment": ENVIRONMENT,
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "environment": ENVIRONMENT,
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "disconnected",
+            "error": str(e)
+        }
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "WasteWise API",
+        "version": "1.0.0",
+        "status": "running",
+        "environment": ENVIRONMENT,
+        "docs": "/docs" if DEBUG else "disabled in production"
+    }
+
+# Initialize database indexes on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database indexes and perform startup tasks"""
+    try:
+        await create_indexes()
+        logger.info("Database indexes created successfully")
+        logger.info("WasteWise API startup completed successfully")
+    except Exception as e:
+        logger.error(f"Startup error: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
-        log_level="info"
+        port=port,
+        log_level="info",
+        access_log=True
     )
